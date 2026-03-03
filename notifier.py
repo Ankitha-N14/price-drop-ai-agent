@@ -1,17 +1,16 @@
 import smtplib
 import os
-from email.message import EmailMessage
+from email.mime.text import MIMEText
 
-EMAIL_USER = os.environ.get("EMAIL_USER")
-EMAIL_PASS = os.environ.get("EMAIL_PASS")
+def send_email(subject, body):
+    sender = os.getenv("EMAIL_USER")
+    password = os.getenv("EMAIL_PASS")
 
-def send_email(subject, content):
-    msg = EmailMessage()
-    msg["From"] = EMAIL_USER
-    msg["To"] = EMAIL_USER
+    msg = MIMEText(body)
     msg["Subject"] = subject
-    msg.set_content(content)
+    msg["From"] = sender
+    msg["To"] = sender
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_USER, EMAIL_PASS)
+        server.login(sender, password)
         server.send_message(msg)
