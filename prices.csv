@@ -1,3 +1,9 @@
-product,price
-iPhone 15,79999
-iPhone 15,78999
+product,brand,seller,price
+Wireless Earbuds,boAt,Amazon,1999
+Wireless Earbuds,boAt,Flipkart,1899
+Wireless Earbuds,Noise,Amazon,1799
+Wireless Earbuds,Noise,Flipkart,1699
+Wireless Earbuds,boAt,Amazon,1799
+Wireless Earbuds,boAt,Flipkart,1899
+Wireless Earbuds,Noise,Amazon,1599
+Wireless Earbuds,Noise,Flipkart,1699
