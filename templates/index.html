@@ -1,79 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AI Price Drop Dashboard</title>
+    <title>Price Drop Dashboard</title>
     <style>
         body {
-            font-family: Arial;
-            background: #0f172a;
+            font-family: Arial, sans-serif;
+            background-color: #1e293b;
             color: white;
-            padding: 40px;
+            margin: 0;
+            padding: 20px;
         }
 
         h1 {
+            text-align: center;
             margin-bottom: 30px;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            background: #1e293b;
-            border-radius: 10px;
-            overflow: hidden;
+            background-color: #334155;
         }
 
         th, td {
             padding: 12px;
-            border-bottom: 1px solid #334155;
+            text-align: left;
+            border-bottom: 1px solid #475569;
         }
 
         th {
-            background: #334155;
+            background-color: #0f172a;
         }
 
         tr:hover {
-            background: #475569;
+            background-color: #475569;
         }
 
-        .buy {
-            color: #22c55e;
-            font-weight: bold;
-        }
-
-        .wait {
-            color: #f59e0b;
-            font-weight: bold;
+        .decision {
+            max-width: 350px;
+            white-space: pre-wrap;
         }
     </style>
 </head>
 <body>
 
-<h1>📉 AI Price Drop Dashboard</h1>
+<h1>AI Price Drop Dashboard</h1>
 
 <table>
-    <tr>
-        <th>Product</th>
-        <th>Brand</th>
-        <th>Seller</th>
-        <th>Old</th>
-        <th>New</th>
-        <th>Drop %</th>
-        <th>AI Decision</th>
-        <th>Time</th>
-    </tr>
-
-    {% for alert in alerts %}
-    <tr>
-        <td>{{ alert.product }}</td>
-        <td>{{ alert.brand }}</td>
-        <td>{{ alert.seller }}</td>
-        <td>₹{{ alert.old_price }}</td>
-        <td>₹{{ alert.new_price }}</td>
-        <td>{{ "%.2f"|format(alert.percent) }}%</td>
-        <td>{{ alert.ai_decision }}</td>
-        <td>{{ alert.timestamp }}</td>
-    </tr>
-    {% endfor %}
+    <thead>
+        <tr>
+            <th>Product</th>
+            <th>Brand</th>
+            <th>Seller</th>
+            <th>Old Price</th>
+            <th>New Price</th>
+            <th>Drop</th>
+            <th>Drop %</th>
+            <th>AI Decision</th>
+            <th>Timestamp</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for alert in alerts %}
+        <tr>
+            <td>{{ alert.product }}</td>
+            <td>{{ alert.brand }}</td>
+            <td>{{ alert.seller }}</td>
+            <td>₹{{ alert.old_price }}</td>
+            <td>₹{{ alert.new_price }}</td>
+            <td>₹{{ alert.price_drop }}</td>
+            <td>{{ "%.2f"|format(alert.percent_drop) }}%</td>
+            <td class="decision">{{ alert.decision }}</td>
+            <td>{{ alert.timestamp }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
 </table>
 
 </body>
