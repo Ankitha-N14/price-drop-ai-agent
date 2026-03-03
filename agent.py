@@ -8,6 +8,8 @@ from groq import Groq
 import os
 
 
+# ---------------- AI Analysis ---------------- #
+
 def ai_analysis(product, brand, seller, old_price, new_price):
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -29,7 +31,9 @@ def ai_analysis(product, brand, seller, old_price, new_price):
     return response.choices[0].message.content
 
 
-def save_to_db(product, brand, seller, old_price, new_price, drop, percent, decision):
+# ---------------- Save to Database ---------------- #
+
+def save_to_db(product, brand, seller, old_price, new_price, price_drop, percent, decision):
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
@@ -41,12 +45,13 @@ def save_to_db(product, brand, seller, old_price, new_price, drop, percent, deci
         "seller TEXT, "
         "old_price REAL, "
         "new_price REAL, "
-        "drop REAL, "
+        "price_drop REAL, "
         "percent REAL, "
         "ai_decision TEXT, "
         "timestamp TEXT)"
     )
 
+    # Prevent duplicate alerts
     cursor.execute(
         "SELECT COUNT(*) FROM alerts WHERE "
         "product=? AND brand=? AND seller=? AND old_price=? AND new_price=?",
@@ -58,7 +63,7 @@ def save_to_db(product, brand, seller, old_price, new_price, drop, percent, deci
     if exists == 0:
         cursor.execute(
             "INSERT INTO alerts "
-            "(product, brand, seller, old_price, new_price, drop, percent, ai_decision, timestamp) "
+            "(product, brand, seller, old_price, new_price, price_drop, percent, ai_decision, timestamp) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 product,
@@ -66,7 +71,7 @@ def save_to_db(product, brand, seller, old_price, new_price, drop, percent, deci
                 seller,
                 old_price,
                 new_price,
-                drop,
+                price_drop,
                 percent,
                 decision,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -79,6 +84,8 @@ def save_to_db(product, brand, seller, old_price, new_price, drop, percent, deci
     conn.close()
     return False
 
+
+# ---------------- Main Agent Logic ---------------- #
 
 def run_agent():
     df = pd.read_csv("prices.csv")
@@ -96,8 +103,8 @@ def run_agent():
 
         if current_price < previous_price:
 
-            drop = previous_price - current_price
-            percent = (drop / previous_price) * 100
+            price_drop = previous_price - current_price
+            percent = (price_drop / previous_price) * 100
 
             decision = ai_analysis(
                 product, brand, seller, previous_price, current_price
@@ -109,7 +116,7 @@ def run_agent():
                 seller,
                 previous_price,
                 current_price,
-                drop,
+                price_drop,
                 percent,
                 decision
             )
@@ -121,7 +128,7 @@ def run_agent():
                     "\nSeller: " + seller +
                     "\nOld Price: Rs " + str(previous_price) +
                     "\nNew Price: Rs " + str(current_price) +
-                    "\nDrop: Rs " + str(drop) +
+                    "\nDrop: Rs " + str(price_drop) +
                     " (" + str(round(percent, 2)) + "%)\n\n"
                     "AI Decision:\n" + decision + "\n"
                 )
