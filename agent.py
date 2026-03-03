@@ -4,28 +4,44 @@ from notifier import send_email
 def run_agent():
     df = pd.read_csv("prices.csv")
 
-    if len(df) < 2:
-        print("Not enough data to compare prices.")
-        return
+    # Sort to ensure correct comparison
+    df = df.reset_index()
 
-    previous_price = df.iloc[-2]["price"]
-    current_price = df.iloc[-1]["price"]
-    product = df.iloc[-1]["product"]
+    alerts = []
 
-    print(f"Previous price: {previous_price}")
-    print(f"Current price: {current_price}")
+    # Group by product + brand + seller
+    grouped = df.groupby(["product", "brand", "seller"])
 
-    if current_price < previous_price:
-        message = (
-            f"Price Drop Alert!\n\n"
-            f"Product: {product}\n"
-            f"Old Price: ₹{previous_price}\n"
-            f"New Price: ₹{current_price}"
-        )
-        send_email("Price Drop Detected!", message)
-        print("Email sent.")
+    for (product, brand, seller), group in grouped:
+        if len(group) < 2:
+            continue
+
+        previous_price = group.iloc[-2]["price"]
+        current_price = group.iloc[-1]["price"]
+
+        if current_price < previous_price:
+            drop = previous_price - current_price
+            percent = (drop / previous_price) * 100
+
+            alerts.append(
+                f"""
+Product: {product}
+Brand: {brand}
+Seller: {seller}
+Old Price: ₹{previous_price}
+New Price: ₹{current_price}
+Drop: ₹{drop} ({percent:.2f}%)
+"""
+            )
+
+    if alerts:
+        message = "MULTI-SELLER PRICE DROP ALERT 🚨\n\n"
+        message += "\n--------------------------------\n".join(alerts)
+
+        send_email("Price Drop Detected Across Sellers!", message)
+        print("Alert email sent.")
     else:
-        print("No price drop detected.")
+        print("No price drops detected.")
 
 if __name__ == "__main__":
     run_agent()
