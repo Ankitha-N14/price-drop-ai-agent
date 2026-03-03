@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import pandas as pd
 import sqlite3
 from datetime import datetime
@@ -15,8 +17,8 @@ def ai_analysis(product, brand, seller, old_price, new_price):
     Product: {product}
     Brand: {brand}
     Seller: {seller}
-    Old Price: ₹{old_price}
-    New Price: ₹{new_price}
+    Old Price: Rs {old_price}
+    New Price: Rs {new_price}
 
     Should the user BUY now or WAIT?
     Give short reasoning in 2 lines.
@@ -124,16 +126,16 @@ def run_agent():
 Product: {product}
 Brand: {brand}
 Seller: {seller}
-Old Price: ₹{previous_price}
-New Price: ₹{current_price}
-Drop: ₹{drop} ({percent:.2f}%)
+Old Price: Rs {previous_price}
+New Price: Rs {current_price}
+Drop: Rs {drop} ({percent:.2f}%)
 
 AI Decision:
 {decision}
 """)
 
     if alerts:
-        message = "AI MULTI-SELLER PRICE DROP ALERT 🚨\n\n"
+        message = "AI MULTI SELLER PRICE DROP ALERT\n\n"
         message += "\n-----------------------------------\n".join(alerts)
         send_email("AI Price Drop Alert", message)
         print("Alert email sent.")
