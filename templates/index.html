@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Price Drop Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            padding: 40px;
+        }
+
+        h1 {
+            margin-bottom: 30px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #334155;
+        }
+
+        th {
+            background: #334155;
+        }
+
+        tr:hover {
+            background: #475569;
+        }
+
+        .buy {
+            color: #22c55e;
+            font-weight: bold;
+        }
+
+        .wait {
+            color: #f59e0b;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<h1>📉 AI Price Drop Dashboard</h1>
+
+<table>
+    <tr>
+        <th>Product</th>
+        <th>Brand</th>
+        <th>Seller</th>
+        <th>Old</th>
+        <th>New</th>
+        <th>Drop %</th>
+        <th>AI Decision</th>
+        <th>Time</th>
+    </tr>
+
+    {% for alert in alerts %}
+    <tr>
+        <td>{{ alert.product }}</td>
+        <td>{{ alert.brand }}</td>
+        <td>{{ alert.seller }}</td>
+        <td>₹{{ alert.old_price }}</td>
+        <td>₹{{ alert.new_price }}</td>
+        <td>{{ "%.2f"|format(alert.percent) }}%</td>
+        <td>{{ alert.ai_decision }}</td>
+        <td>{{ alert.timestamp }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>
