@@ -1,66 +1,68 @@
-# -*- coding: utf-8 -*-
-
 import pandas as pd
 import sqlite3
 from datetime import datetime
-from notifier import send_email
-from groq import Groq
 import os
+from groq import Groq
 
+# -----------------------------
+# AI analysis using Groq
+# -----------------------------
+def ai_analysis(product, brand, old_price, new_price):
 
-def ai_analysis(product, brand, seller, old_price, new_price):
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-    prompt = (
-        "Product: " + product + "\n"
-        "Brand: " + brand + "\n"
-        "Seller: " + seller + "\n"
-        "Old Price: Rs " + str(old_price) + "\n"
-        "New Price: Rs " + str(new_price) + "\n\n"
-        "Should the user BUY now or WAIT?\n"
-        "Give short reasoning in 2 lines."
-    )
+    prompt = f"""
+The price of {brand} {product} has dropped from ₹{old_price} to ₹{new_price}.
+Should a customer buy now or wait for a better deal?
+Give a short recommendation.
+"""
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",   # updated working model
-        messages=[{"role": "user", "content": prompt}]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": prompt}],
+        )
 
-    return response.choices[0].message.content
+        decision = response.choices[0].message.content.strip()
+        return decision
+
+    except:
+        return "Price dropped. Consider buying now."
 
 
-def save_to_db(product, brand, seller, old_price, new_price, drop, percent, decision):
+# -----------------------------
+# Insert alert into database
+# -----------------------------
+def insert_alert(product, brand, seller, old_price, new_price, drop, percent, decision):
+
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
+    # check duplicate
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS alerts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product TEXT,
-            brand TEXT,
-            seller TEXT,
-            old_price INTEGER,
-            new_price INTEGER,
-            price_drop INTEGER,
-            percent_drop REAL,
-            decision TEXT,
-            timestamp TEXT
-        )
-    """)
+        SELECT * FROM alerts
+        WHERE product=? AND brand=? AND seller=? AND new_price=?
+    """, (product, brand, seller, new_price))
+
+    existing = cursor.fetchone()
+
+    if existing:
+        conn.close()
+        return
 
     cursor.execute("""
-        INSERT INTO alerts 
+        INSERT INTO alerts
         (product, brand, seller, old_price, new_price, price_drop, percent_drop, decision, timestamp)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        str(product),
-        str(brand),
-        str(seller),
+        product,
+        brand,
+        seller,
         int(old_price),
         int(new_price),
         int(drop),
         float(percent),
-        str(decision),
+        decision,
         datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ))
 
@@ -68,35 +70,36 @@ def save_to_db(product, brand, seller, old_price, new_price, drop, percent, deci
     conn.close()
 
 
+# -----------------------------
+# Run the price monitoring agent
+# -----------------------------
 def run_agent():
+
+    print("Checking prices...")
+
     df = pd.read_csv("prices.csv")
 
-    grouped = df.groupby(["product", "brand", "seller"])
+    # group by product + brand + seller
+    groups = df.groupby(["product", "brand", "seller"])
 
-    alerts_generated = False
+    for (product, brand, seller), group in groups:
 
-    for (product, brand, seller), group in grouped:
+        prices = group["price"].tolist()
 
-        if len(group) < 2:
+        if len(prices) < 2:
             continue
 
-        old_price = int(group.iloc[-2]["price"])
-        new_price = int(group.iloc[-1]["price"])
+        old_price = prices[0]
+        new_price = prices[-1]
 
         if new_price < old_price:
 
-            drop = int(old_price - new_price)
-            percent = round((drop / old_price) * 100, 2)
+            drop = old_price - new_price
+            percent = (drop / old_price) * 100
 
-            decision = ai_analysis(
-                product,
-                brand,
-                seller,
-                old_price,
-                new_price
-            )
+            decision = ai_analysis(product, brand, old_price, new_price)
 
-            save_to_db(
+            insert_alert(
                 product,
                 brand,
                 seller,
@@ -107,17 +110,11 @@ def run_agent():
                 decision
             )
 
-            alerts_generated = True
-
-    if alerts_generated:
-        send_email(
-            "Price Drop Detected Across Sellers!",
-            "Check your dashboard for full AI analysis."
-        )
-        print("Alert email sent.")
-    else:
-        print("No price drops detected.")
+    print("Price check completed.")
 
 
+# -----------------------------
+# Run script
+# -----------------------------
 if __name__ == "__main__":
     run_agent()
