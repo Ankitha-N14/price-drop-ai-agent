@@ -5,6 +5,7 @@ import os
 from email.mime.text import MIMEText
 from datetime import datetime
 
+<<<<<<< HEAD
 
 # ==============================
 # Email configuration
@@ -64,6 +65,8 @@ Check your dashboard for more details.
 # Create database table
 # ==============================
 
+=======
+>>>>>>> a8d43d1 (added email alert functionality)
 def create_table():
 
     conn = sqlite3.connect("database.db")
@@ -88,10 +91,13 @@ def create_table():
     conn.close()
 
 
+<<<<<<< HEAD
 # ==============================
 # Insert alert into database
 # ==============================
 
+=======
+>>>>>>> a8d43d1 (added email alert functionality)
 def insert_alert(product, brand, seller, old_price, new_price, drop, percent, decision):
 
     conn = sqlite3.connect("database.db")
@@ -117,10 +123,13 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
     conn.close()
 
 
+<<<<<<< HEAD
 # ==============================
 # AI decision logic
 # ==============================
 
+=======
+>>>>>>> a8d43d1 (added email alert functionality)
 def generate_decision(product, brand, drop, percent):
 
     if percent >= 10:
@@ -135,10 +144,13 @@ def generate_decision(product, brand, drop, percent):
     return decision
 
 
+<<<<<<< HEAD
 # ==============================
 # Run agent
 # ==============================
 
+=======
+>>>>>>> a8d43d1 (added email alert functionality)
 def run_agent():
 
     print("Checking prices...")
@@ -177,6 +189,7 @@ def run_agent():
                 decision
             )
 
+<<<<<<< HEAD
             send_email(product, brand, old_price, new_price, drop)
 
             print("Price drop detected for", product, "(" + brand + ")")
@@ -186,5 +199,10 @@ def run_agent():
 # Start agent
 # ==============================
 
+=======
+            print("Price drop detected for", product, "(" + brand + ")")
+
+
+>>>>>>> a8d43d1 (added email alert functionality)
 if __name__ == "__main__":
     run_agent()
