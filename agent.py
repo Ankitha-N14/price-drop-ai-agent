@@ -2,23 +2,46 @@ import pandas as pd
 import sqlite3
 import smtplib
 import os
+import requests
+from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from datetime import datetime
 
-<<<<<<< HEAD
-
-# ==============================
-# Email configuration
-# ==============================
 
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
 
+# -------------------------
+# Scrape price from Amazon
+# -------------------------
+
+def get_price(url):
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    page = requests.get(url, headers=headers)
+
+    soup = BeautifulSoup(page.content, "html.parser")
+
+    price = soup.find("span", {"class": "a-price-whole"})
+
+    if price:
+        return int(price.text.replace(",", ""))
+
+    return None
+
+
+# -------------------------
+# Email alerts
+# -------------------------
+
 def send_email(product, brand, old_price, new_price, drop):
 
     if not EMAIL_USER or not EMAIL_PASS:
-        print("Email credentials missing. Skipping email.")
+        print("Email credentials missing")
         return
 
     subject = "Price Drop Alert"
@@ -31,42 +54,35 @@ Product: {brand} {product}
 Old Price: Rs {old_price}
 New Price: Rs {new_price}
 
-Price Drop: Rs {drop}
-
-Check your dashboard for more details.
+Drop: Rs {drop}
 """
 
     msg = MIMEText(body)
+
     msg["Subject"] = subject
     msg["From"] = EMAIL_USER
     msg["To"] = EMAIL_USER
 
-    try:
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
+    server = smtplib.SMTP("smtp.gmail.com", 587)
+    server.starttls()
 
-        server.login(EMAIL_USER, EMAIL_PASS)
+    server.login(EMAIL_USER, EMAIL_PASS)
 
-        server.sendmail(
-            EMAIL_USER,
-            EMAIL_USER,
-            msg.as_string()
-        )
+    server.sendmail(
+        EMAIL_USER,
+        EMAIL_USER,
+        msg.as_string()
+    )
 
-        server.quit()
+    server.quit()
 
-        print("Email sent for", product)
-
-    except Exception as e:
-        print("Email failed:", e)
+    print("Email sent for", product)
 
 
-# ==============================
-# Create database table
-# ==============================
+# -------------------------
+# Database
+# -------------------------
 
-=======
->>>>>>> a8d43d1 (added email alert functionality)
 def create_table():
 
     conn = sqlite3.connect("database.db")
@@ -91,13 +107,10 @@ def create_table():
     conn.close()
 
 
-<<<<<<< HEAD
-# ==============================
-# Insert alert into database
-# ==============================
+# -------------------------
+# Insert alert
+# -------------------------
 
-=======
->>>>>>> a8d43d1 (added email alert functionality)
 def insert_alert(product, brand, seller, old_price, new_price, drop, percent, decision):
 
     conn = sqlite3.connect("database.db")
@@ -123,13 +136,10 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
     conn.close()
 
 
-<<<<<<< HEAD
-# ==============================
+# -------------------------
 # AI decision logic
-# ==============================
+# -------------------------
 
-=======
->>>>>>> a8d43d1 (added email alert functionality)
 def generate_decision(product, brand, drop, percent):
 
     if percent >= 10:
@@ -144,65 +154,81 @@ def generate_decision(product, brand, drop, percent):
     return decision
 
 
-<<<<<<< HEAD
-# ==============================
+# -------------------------
 # Run agent
-# ==============================
+# -------------------------
 
-=======
->>>>>>> a8d43d1 (added email alert functionality)
 def run_agent():
 
     print("Checking prices...")
 
     create_table()
 
-    df = pd.read_csv("prices.csv")
+    df = pd.read_csv("products.csv")
 
-    grouped = df.groupby(["product", "brand", "seller"])
+    for index, row in df.iterrows():
 
-    for (product, brand, seller), group in grouped:
+        product = row["product"]
+        brand = row["brand"]
+        seller = row["seller"]
+        url = row["url"]
 
-        prices = group["price"].tolist()
+        new_price = get_price(url)
 
-        if len(prices) < 2:
+        if new_price is None:
             continue
 
-        old_price = prices[0]
-        new_price = prices[-1]
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
 
-        if new_price < old_price:
+        cursor.execute(
+            "SELECT new_price FROM alerts WHERE product=? ORDER BY id DESC LIMIT 1",
+            (product,)
+        )
 
-            drop = old_price - new_price
-            percent = (drop / old_price) * 100
+        result = cursor.fetchone()
 
-            decision = generate_decision(product, brand, drop, percent)
+        conn.close()
+
+        if result:
+
+            old_price = result[0]
+
+            if new_price < old_price:
+
+                drop = old_price - new_price
+                percent = (drop / old_price) * 100
+
+                decision = generate_decision(product, brand, drop, percent)
+
+                insert_alert(
+                    product,
+                    brand,
+                    seller,
+                    old_price,
+                    new_price,
+                    drop,
+                    percent,
+                    decision
+                )
+
+                send_email(product, brand, old_price, new_price, drop)
+
+                print("Price drop detected for", product)
+
+        else:
 
             insert_alert(
                 product,
                 brand,
                 seller,
-                old_price,
                 new_price,
-                drop,
-                percent,
-                decision
+                new_price,
+                0,
+                0,
+                "Initial price recorded"
             )
 
-<<<<<<< HEAD
-            send_email(product, brand, old_price, new_price, drop)
 
-            print("Price drop detected for", product, "(" + brand + ")")
-
-
-# ==============================
-# Start agent
-# ==============================
-
-=======
-            print("Price drop detected for", product, "(" + brand + ")")
-
-
->>>>>>> a8d43d1 (added email alert functionality)
 if __name__ == "__main__":
     run_agent()
