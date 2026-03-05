@@ -62,13 +62,15 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
 def generate_decision(product, brand, drop, percent):
 
     if percent >= 10:
-        return f"You should BUY now as the price of the {brand} {product} has dropped by Rs {drop}"
+        decision = "You should BUY now as the price of the " + brand + " " + product + " has dropped by Rs " + str(drop)
 
     elif percent >= 5:
-        return f"Price dropped by Rs {drop}. Consider buying soon."
+        decision = "Price dropped by Rs " + str(drop) + ". Consider buying soon."
 
     else:
-        return "Price drop detected but waiting for a better deal."
+        decision = "Price drop detected but waiting for a better deal."
+
+    return decision
 
 
 # ==============================
