@@ -7,6 +7,13 @@ from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from datetime import datetime
 
+<<<<<<< HEAD
+=======
+
+# ==============================
+# Email configuration
+# ==============================
+>>>>>>> f6859de (added web scraping price monitoring)
 
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
@@ -107,9 +114,15 @@ def create_table():
     conn.close()
 
 
+<<<<<<< HEAD
 # -------------------------
 # Insert alert
 # -------------------------
+=======
+# ==============================
+# Insert alert into database
+# ==============================
+>>>>>>> f6859de (added web scraping price monitoring)
 
 def insert_alert(product, brand, seller, old_price, new_price, drop, percent, decision):
 
@@ -136,7 +149,11 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
     conn.close()
 
 
+<<<<<<< HEAD
 # -------------------------
+=======
+# ==============================
+>>>>>>> f6859de (added web scraping price monitoring)
 # AI decision logic
 # -------------------------
 
@@ -154,7 +171,11 @@ def generate_decision(product, brand, drop, percent):
     return decision
 
 
+<<<<<<< HEAD
 # -------------------------
+=======
+# ==============================
+>>>>>>> f6859de (added web scraping price monitoring)
 # Run agent
 # -------------------------
 
@@ -229,6 +250,18 @@ def run_agent():
                 "Initial price recorded"
             )
 
+<<<<<<< HEAD
 
+=======
+            send_email(product, brand, old_price, new_price, drop)
+
+            print("Price drop detected for", product, "(" + brand + ")")
+
+
+# ==============================
+# Start agent
+# ==============================
+
+>>>>>>> f6859de (added web scraping price monitoring)
 if __name__ == "__main__":
     run_agent()
