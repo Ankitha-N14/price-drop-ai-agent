@@ -6,6 +6,7 @@ from datetime import datetime
 # Create database table
 # ==============================
 def create_table():
+
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
@@ -41,14 +42,14 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
     (product, brand, seller, old_price, new_price, price_drop, percent_drop, decision, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        str(product),
-        str(brand),
-        str(seller),
-        int(old_price),
-        int(new_price),
-        int(drop),
-        float(percent),
-        str(decision),
+        product,
+        brand,
+        seller,
+        old_price,
+        new_price,
+        drop,
+        percent,
+        decision,
         datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ))
 
@@ -57,50 +58,45 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
 
 
 # ==============================
-# AI Decision Logic
+# AI decision logic
 # ==============================
 def generate_decision(product, brand, drop, percent):
 
     if percent >= 10:
-        decision = "You should BUY now as the price of the " + brand + " " + product + " has dropped by Rs " + str(drop)
+        decision = "BUY NOW: Price of " + brand + " " + product + " dropped by Rs " + str(drop)
 
     elif percent >= 5:
-        decision = "Price dropped by Rs " + str(drop) + ". Consider buying soon."
+        decision = "Good deal: Price dropped by Rs " + str(drop)
 
     else:
-        decision = "Price drop detected but waiting for a better deal."
+        decision = "Minor price drop detected"
 
     return decision
 
 
 # ==============================
-# Run the price monitoring agent
+# Run agent
 # ==============================
 def run_agent():
 
     print("Checking prices...")
 
-    # Ensure database exists
     create_table()
 
-    # Load price data
     df = pd.read_csv("prices.csv")
 
-    # Group by product + brand + seller
-    groups = df.groupby(["product", "brand", "seller"])
+    grouped = df.groupby(["product", "brand", "seller"])
 
-    for (product, brand, seller), group in groups:
+    for (product, brand, seller), group in grouped:
 
         prices = group["price"].tolist()
 
-        # Need at least 2 prices to compare
         if len(prices) < 2:
             continue
 
         old_price = prices[0]
         new_price = prices[-1]
 
-        # Check if price dropped
         if new_price < old_price:
 
             drop = old_price - new_price
@@ -119,11 +115,11 @@ def run_agent():
                 decision
             )
 
-            print(f"Price drop detected for {product} ({brand})")
+            print("Price drop detected for", product, "(" + brand + ")")
 
 
 # ==============================
-# Run script
+# Start agent
 # ==============================
 if __name__ == "__main__":
     run_agent()
