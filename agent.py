@@ -1,46 +1,69 @@
 import time
 import schedule
-from database import load_products,save_products
+import pandas as pd
+
 from scraper import get_price
 from ai_logic import price_decision
 from notifier import send_email
 
+FILE = "products.csv"
+
 
 def check_prices():
 
-    df = load_products()
+    print("Checking prices...")
 
-    for i,row in df.iterrows():
+    try:
+        df = pd.read_csv(FILE)
+    except:
+        print("No products found.")
+        return
 
-        price = get_price(row["url"])
+    for i, row in df.iterrows():
+
+        url = row["url"]
+        product = row["product"]
+        email = row["email"]
+
+        price = get_price(url)
 
         if price is None:
+            print("Price not found for", product)
             continue
 
-        last = row["current_price"]
+        last_price = row["current_price"]
 
-        df.at[i,"last_price"] = last
-        df.at[i,"current_price"] = price
+        df.at[i, "last_price"] = last_price
+        df.at[i, "current_price"] = price
 
-        decision = price_decision(price,last)
+        decision = price_decision(price, last_price)
 
-        df.at[i,"ai_decision"] = decision
+        df.at[i, "ai_decision"] = decision
 
-        if last != 0 and price < last:
+        print(product, ":", price)
+
+        # send email if price dropped
+        if last_price != 0 and price < last_price:
+
+            print("Price dropped! Sending email...")
 
             send_email(
-                row["email"],
-                row["product"],
+                email,
+                product,
                 price,
-                row["url"]
+                url
             )
 
-    save_products(df)
+    df.to_csv(FILE, index=False)
 
-
-schedule.every(5).minutes.do(check_prices)
 
 print("Agent running...")
+
+# run immediately when starting
+check_prices()
+
+# schedule continuous monitoring
+schedule.every(5).minutes.do(check_prices)
 
 while True:
 
