@@ -1,263 +1,336 @@
-import requests
-from bs4 import BeautifulSoup
-import sqlite3
-import smtplib
-import os
-from email.mime.text import MIMEText
-from datetime import datetime
-import sys
-
-# ==============================
-# EMAIL CONFIG
-# ==============================
-
-EMAIL_USER = os.getenv("EMAIL_USER")
-EMAIL_PASS = os.getenv("EMAIL_PASS")
-
-
-def send_email(product, website, price):
-
-    if not EMAIL_USER or not EMAIL_PASS:
-        print("Email credentials missing")
-        return
-
-    subject = "Price Drop Alert"
-
-    body = f"""
-Price Alert!
-
-Product: {product}
-Website: {website}
-
-Current Price: Rs {price}
-
-Check the dashboard for more details.
+"""
+Autonomous E-Commerce Price Monitoring Agent
+Scrapes product prices and triggers alerts when thresholds are crossed.
 """
 
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_USER
-    msg["To"] = EMAIL_USER
+import csv
+import json
+import logging
+import os
+import random
+import re
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
 
+import requests
+from bs4 import BeautifulSoup
+
+from notifier import Notifier
+
+# ── Logging setup ────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("agent.log", encoding="utf-8"),
+    ],
+)
+log = logging.getLogger(__name__)
+
+# ── Constants ────────────────────────────────────────────────────────────────
+PRODUCTS_CSV = Path("products.csv")
+HISTORY_CSV  = Path("price_history.csv")
+CONFIG_FILE  = Path("config.json")
+
+DEFAULT_CONFIG = {
+    "check_interval_seconds": 3600,
+    "request_timeout": 15,
+    "retry_attempts": 3,
+    "retry_delay": 5,
+    "user_agents": [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/17.3 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    ],
+}
+
+SITE_SELECTORS = {
+    "amazon": {
+        "price": [
+            "#priceblock_ourprice",
+            "#priceblock_dealprice",
+            ".a-price .a-offscreen",
+            "span.a-price-whole",
+            "#price_inside_buybox",
+        ],
+        "name": ["#productTitle", "h1.a-size-large"],
+    },
+    "flipkart": {
+        "price": ["._30jeq3._16Jk6d", "._30jeq3", "div._25b18c ._30jeq3"],
+        "name":  ["span.B_NuCI", "h1.yhB1nd"],
+    },
+    "ebay": {
+        "price": ["#prcIsum", ".x-price-primary span", "#mm-saleDscPrc"],
+        "name":  ["h1.it-ttl", "#itemTitle"],
+    },
+    "generic": {
+        "price": [
+            "[class*='price']",
+            "[id*='price']",
+            "[class*='Price']",
+            "span[itemprop='price']",
+            "meta[itemprop='price']",
+        ],
+        "name": ["h1", "[class*='product-title']", "[class*='productTitle']"],
+    },
+}
+
+
+def load_config() -> dict:
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE) as f:
+                cfg = json.load(f)
+            return {**DEFAULT_CONFIG, **cfg}
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning("Config load failed (%s); using defaults.", e)
+    return DEFAULT_CONFIG.copy()
+
+
+def detect_site(url: str) -> str:
+    url_lower = url.lower()
+    for site in ("amazon", "flipkart", "ebay"):
+        if site in url_lower:
+            return site
+    return "generic"
+
+
+def parse_price(raw: str) -> Optional[float]:
+    """Extract a float from a messy price string."""
+    if not raw:
+        return None
+    cleaned = re.sub(r"[^\d.,]", "", raw.strip())
+    # Handle Indian lakh format: 1,00,000
+    cleaned = cleaned.replace(",", "")
     try:
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(EMAIL_USER, EMAIL_PASS)
-
-        server.sendmail(
-            EMAIL_USER,
-            EMAIL_USER,
-            msg.as_string()
-        )
-
-        server.quit()
-
-        print("Email sent")
-
-    except Exception as e:
-        print("Email failed:", e)
+        return float(cleaned)
+    except ValueError:
+        return None
 
 
-# ==============================
-# DATABASE
-# ==============================
-
-def create_table():
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS alerts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        product TEXT,
-        website TEXT,
-        old_price INTEGER,
-        new_price INTEGER,
-        price_drop INTEGER,
-        percent_drop REAL,
-        decision TEXT,
-        timestamp TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-# ==============================
-# CLEAR OLD DATA
-# ==============================
-
-def clear_old_data():
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM alerts")
-
-    conn.commit()
-    conn.close()
-
-
-# ==============================
-# INSERT DATA
-# ==============================
-
-def insert_alert(product, website, old_price, new_price, drop, percent, decision):
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    INSERT INTO alerts
-    (product, website, old_price, new_price, price_drop, percent_drop, decision, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        product,
-        website,
-        old_price,
-        new_price,
-        drop,
-        percent,
-        decision,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-# ==============================
-# AI DECISION
-# ==============================
-
-def generate_decision(product, drop, percent):
-
-    if percent >= 10:
-        return f"BUY NOW: Price dropped by Rs {drop}"
-
-    elif percent >= 5:
-        return f"Good deal: Price dropped by Rs {drop}"
-
-    else:
-        return "Minor price drop"
-
-
-# ==============================
-# AMAZON SCRAPER
-# ==============================
-
-def scrape_amazon(product):
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
+def scrape_product(url: str, config: dict) -> dict:
+    """
+    Fetch a product page and return {name, price, currency, url, timestamp}.
+    Returns price=None on failure.
+    """
+    site      = detect_site(url)
+    selectors = SITE_SELECTORS[site]
+    headers   = {
+        "User-Agent": random.choice(config["user_agents"]),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "https://www.google.com/",
     }
 
-    url = f"https://www.amazon.in/s?k={product.replace(' ','+')}"
+    for attempt in range(1, config["retry_attempts"] + 1):
+        try:
+            resp = requests.get(
+                url,
+                headers=headers,
+                timeout=config["request_timeout"],
+                allow_redirects=True,
+            )
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
 
-    response = requests.get(url, headers=headers)
+            # ── Extract price ───────────────────────────────────────────
+            price = None
+            for sel in selectors["price"]:
+                tag = soup.select_one(sel)
+                if tag:
+                    raw = tag.get("content") or tag.get_text()
+                    price = parse_price(raw)
+                    if price:
+                        break
 
-    soup = BeautifulSoup(response.text, "html.parser")
+            # ── Extract name ────────────────────────────────────────────
+            name = url  # fallback
+            for sel in selectors["name"]:
+                tag = soup.select_one(sel)
+                if tag:
+                    name = tag.get_text(strip=True)[:200]
+                    break
 
-    price = soup.select_one(".a-price-whole")
+            # ── Detect currency ─────────────────────────────────────────
+            currency = "INR" if "flipkart" in url or ".in" in url else "USD"
 
-    if price:
-        return int(price.text.replace(",", ""))
+            result = {
+                "name":      name,
+                "price":     price,
+                "currency":  currency,
+                "url":       url,
+                "site":      site,
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+            }
+            log.info("Scraped [%s] %s → %s %s", site, name[:60], price, currency)
+            return result
 
-    return None
+        except requests.RequestException as e:
+            log.warning("Attempt %d/%d failed for %s: %s", attempt, config["retry_attempts"], url, e)
+            if attempt < config["retry_attempts"]:
+                time.sleep(config["retry_delay"] * attempt)
 
-
-# ==============================
-# FLIPKART SCRAPER
-# ==============================
-
-def scrape_flipkart(product):
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
+    log.error("All attempts failed for %s", url)
+    return {
+        "name": url, "price": None, "currency": "N/A",
+        "url": url, "site": site,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
     }
 
-    url = f"https://www.flipkart.com/search?q={product.replace(' ','%20')}"
 
-    response = requests.get(url, headers=headers)
+def load_products() -> list[dict]:
+    """Read products.csv → list of dicts."""
+    if not PRODUCTS_CSV.exists():
+        log.warning("products.csv not found — creating sample.")
+        _create_sample_products()
 
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    price = soup.select_one("._30jeq3")
-
-    if price:
-        return int(price.text.replace("₹", "").replace(",", ""))
-
-    return None
-
-
-# ==============================
-# GET PRICE
-# ==============================
-
-def get_price(product, website):
-
-    if website.lower() == "amazon":
-        return scrape_amazon(product)
-
-    elif website.lower() == "flipkart":
-        return scrape_flipkart(product)
-
-    return None
+    products = []
+    with open(PRODUCTS_CSV, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            row = {k.strip(): v.strip() for k, v in row.items()}
+            # Normalise threshold field name
+            row.setdefault("threshold", row.get("price_threshold", "0"))
+            try:
+                row["threshold"] = float(row["threshold"])
+            except ValueError:
+                row["threshold"] = 0.0
+            products.append(row)
+    return products
 
 
-# ==============================
-# AGENT
-# ==============================
-
-def run_agent(product, website):
-
-    print("Checking prices...")
-
-    create_table()
-
-    clear_old_data()
-
-    new_price = get_price(product, website)
-
-    if new_price is None:
-        print("Price not found — using demo price")
-        new_price = 50000
-
-    old_price = int(new_price * 1.15)
-
-    drop = old_price - new_price
-    percent = (drop / old_price) * 100
-
-    decision = generate_decision(product, drop, percent)
-
-    insert_alert(
-        product,
-        website,
-        old_price,
-        new_price,
-        drop,
-        percent,
-        decision
-    )
-
-    send_email(product, website, new_price)
-
-    print("Price stored in database")
+def _create_sample_products():
+    """Write a starter products.csv so the agent can run immediately."""
+    sample = [
+        {
+            "product_id": "P001",
+            "name": "Sample Product 1",
+            "url": "https://www.amazon.in/dp/B08N5LNQCX",
+            "threshold": "999.00",
+            "last_price": "",
+            "last_checked": "",
+        },
+        {
+            "product_id": "P002",
+            "name": "Sample Product 2",
+            "url": "https://www.flipkart.com/some-product/p/itm123",
+            "threshold": "499.00",
+            "last_price": "",
+            "last_checked": "",
+        },
+    ]
+    with open(PRODUCTS_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(sample[0].keys()))
+        writer.writeheader()
+        writer.writerows(sample)
+    log.info("Created sample products.csv")
 
 
-# ==============================
-# MAIN
-# ==============================
+def update_product_row(product: dict, scraped: dict):
+    """Persist last_price and last_checked back into products.csv."""
+    rows = []
+    with open(PRODUCTS_CSV, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        for row in reader:
+            if row.get("product_id") == product.get("product_id") or row.get("url") == product.get("url"):
+                row["last_price"]   = str(scraped.get("price", ""))
+                row["last_checked"] = scraped.get("timestamp", "")
+            rows.append(row)
+
+    with open(PRODUCTS_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def append_history(product: dict, scraped: dict):
+    """Append one row to price_history.csv."""
+    file_exists = HISTORY_CSV.exists()
+    fieldnames = [
+        "product_id", "name", "url", "price", "currency",
+        "threshold", "alert_triggered", "timestamp",
+    ]
+    price     = scraped.get("price")
+    threshold = float(product.get("threshold", 0))
+    alerted   = "YES" if (price is not None and threshold > 0 and price <= threshold) else "NO"
+
+    with open(HISTORY_CSV, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow({
+            "product_id":       product.get("product_id", ""),
+            "name":             scraped.get("name", product.get("name", "")),
+            "url":              product.get("url", ""),
+            "price":            price if price is not None else "N/A",
+            "currency":         scraped.get("currency", ""),
+            "threshold":        threshold,
+            "alert_triggered":  alerted,
+            "timestamp":        scraped.get("timestamp", ""),
+        })
+
+
+def run_once(config: dict, notifier: Notifier):
+    """Single monitoring pass over all products."""
+    products = load_products()
+    log.info("Starting check for %d products.", len(products))
+    alerts = []
+
+    for product in products:
+        url = product.get("url", "").strip()
+        if not url or url.startswith("#"):
+            continue
+
+        scraped   = scrape_product(url, config)
+        price     = scraped.get("price")
+        threshold = float(product.get("threshold", 0))
+
+        append_history(product, scraped)
+        update_product_row(product, scraped)
+
+        # ── Alert logic ─────────────────────────────────────────────────
+        if price is not None and threshold > 0 and price <= threshold:
+            msg = (
+                f"🎉 Price Alert!\n"
+                f"Product : {scraped['name'][:80]}\n"
+                f"Price   : {scraped['currency']} {price:,.2f}\n"
+                f"Target  : {scraped['currency']} {threshold:,.2f}\n"
+                f"URL     : {url}\n"
+                f"Time    : {scraped['timestamp']}"
+            )
+            log.info("ALERT triggered: %s", msg.splitlines()[1])
+            notifier.send(msg)
+            alerts.append(scraped)
+
+        # polite delay between requests
+        time.sleep(random.uniform(2, 5))
+
+    log.info("Check complete. Alerts sent: %d", len(alerts))
+    return alerts
+
+
+def run_loop():
+    """Continuous monitoring loop."""
+    config   = load_config()
+    notifier = Notifier()
+    log.info("Agent started. Interval: %ds", config["check_interval_seconds"])
+
+    while True:
+        try:
+            run_once(config, notifier)
+        except Exception as e:
+            log.exception("Unexpected error in run_once: %s", e)
+
+        next_run = datetime.now().strftime("%H:%M:%S")
+        log.info("Next check in %ds  (started at %s)", config["check_interval_seconds"], next_run)
+        time.sleep(config["check_interval_seconds"])
+
 
 if __name__ == "__main__":
-
-    if len(sys.argv) < 3:
-        print("Usage: python agent.py 'product' 'website'")
-        sys.exit()
-
-    product = sys.argv[1]
-    website = sys.argv[2]
-
-    run_agent(product, website)
+    run_loop()
