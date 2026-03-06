@@ -154,7 +154,7 @@ def get_price(product, site):
 
             soup = BeautifulSoup(r.text, "html.parser")
 
-            price = soup.select_one(".a-price-whole")
+            price = soup.select_one("span.a-price-whole")
 
             if price:
                 return int(price.text.replace(",", ""))
