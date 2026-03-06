@@ -1,33 +1,38 @@
-import requests
-import re
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+
 
 def get_price(url):
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9"
-    }
+    options = Options()
+    options.add_argument("--disable-blink-features=AutomationControlled")
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+    )
+
+    driver.get(url)
+
+    price = None
 
     try:
-        r = requests.get(url, headers=headers)
-        html = r.text
+        # wait until price element appears
+        price_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "span.a-price span.a-offscreen"))
+        )
 
-        # Amazon embeds price in JSON sometimes
-        price_match = re.search(r'"priceToPay"\s*:\s*\{"amount"\s*:\s*([\d\.]+)', html)
+        price_text = price_element.text
+        price = float(price_text.replace("₹", "").replace(",", ""))
 
-        if price_match:
-            return float(price_match.group(1))
-
-        # fallback selector
-        price_match = re.search(r'₹\s?([\d,]+)', html)
-
-        if price_match:
-            price = price_match.group(1).replace(",", "")
-            return float(price)
-
+    except:
         print("Price not found on page")
-        return None
 
-    except Exception as e:
-        print("Error:", e)
-        return None
+    driver.quit()
+
+    return price
