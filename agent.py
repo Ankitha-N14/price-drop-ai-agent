@@ -44,8 +44,10 @@ Check your dashboard for more details.
     msg["To"] = EMAIL_USER
 
     try:
+
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
+
         server.login(EMAIL_USER, EMAIL_PASS)
 
         server.sendmail(
@@ -126,7 +128,7 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
 def generate_decision(product, brand, drop, percent):
 
     if percent >= 10:
-        return f"BUY NOW: {brand} {product} dropped by Rs {drop}"
+        return f"BUY NOW: Price of {brand} {product} dropped by Rs {drop}"
 
     elif percent >= 5:
         return f"Good deal: Price dropped by Rs {drop}"
@@ -150,6 +152,7 @@ def get_price(product, site):
         if site.lower() == "amazon":
 
             url = f"https://www.amazon.in/s?k={product}"
+
             r = requests.get(url, headers=headers)
 
             soup = BeautifulSoup(r.text, "html.parser")
@@ -159,10 +162,22 @@ def get_price(product, site):
             if price:
                 return int(price.text.replace(",", ""))
 
+            # fallback selector
+            alt_price = soup.select_one(".a-price .a-offscreen")
+
+            if alt_price:
+                return int(
+                    alt_price.text
+                    .replace("₹", "")
+                    .replace(",", "")
+                    .strip()
+                )
+
 
         if site.lower() == "flipkart":
 
             url = f"https://www.flipkart.com/search?q={product}"
+
             r = requests.get(url, headers=headers)
 
             soup = BeautifulSoup(r.text, "html.parser")
@@ -170,10 +185,16 @@ def get_price(product, site):
             price = soup.select_one("._30jeq3")
 
             if price:
-                return int(price.text.replace("₹", "").replace(",", ""))
+                return int(
+                    price.text
+                    .replace("₹", "")
+                    .replace(",", "")
+                    .strip()
+                )
 
-    except:
-        pass
+    except Exception as e:
+
+        print("Scraping error:", e)
 
     return None
 
@@ -191,13 +212,15 @@ def run_agent(product, site):
     new_price = get_price(product, site)
 
     if new_price is None:
-        print("Price not found.")
+
+        print("Price not found for this product.")
         return
 
     # Simulated previous price
-    old_price = new_price + 500
+    old_price = new_price + 1000
 
     drop = old_price - new_price
+
     percent = (drop / old_price) * 100
 
     decision = generate_decision(product, site, drop, percent)
