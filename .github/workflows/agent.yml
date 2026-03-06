@@ -1,31 +1,23 @@
-name: AI Price Drop Agent
+name: Price Monitor
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # Runs every 10 minutes
-  workflow_dispatch:         # Allows manual run from GitHub
+    - cron: "*/30 * * * *"
 
 jobs:
   run-agent:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.10"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pandas flask groq
+      - name: Install packages
+        run: pip install -r requirements.txt
 
       - name: Run agent
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: python agent.py
