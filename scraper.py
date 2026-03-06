@@ -1,37 +1,34 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
+from bs4 import BeautifulSoup
 
 
 def get_price(url):
 
-    options = Options()
-    options.add_argument("--disable-blink-features=AutomationControlled")
-
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
-
-    driver.get(url)
-
-    price = None
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
 
     try:
-        price_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "span.a-price span.a-offscreen"))
-        )
+        response = requests.get(url, headers=headers, timeout=10)
 
-        price_text = price_element.text
-        price = float(price_text.replace("₹", "").replace(",", ""))
+        soup = BeautifulSoup(response.text, "html.parser")
 
-    except:
+        # main Amazon price selector
+        price = soup.select_one("span.a-price span.a-offscreen")
+
+        if price:
+            price_text = price.text.replace("₹", "").replace(",", "").strip()
+            return float(price_text)
+
+        # if product unavailable
+        if "Currently unavailable" in response.text:
+            print("Product currently unavailable")
+            return None
+
         print("Price not found on page")
+        return None
 
-    driver.quit()
-
-    return price
+    except Exception as e:
+        print("Error:", e)
+        return None
