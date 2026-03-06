@@ -1,138 +1,171 @@
+"""
+dashboard.py — Data-loading helpers for streamlit_app.py
+All pandas / CSV work lives here.
+"""
+
+import csv
+import json
+import logging
 import os
-import time
-import threading
+import shutil
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+
 import pandas as pd
-import sqlite3
-from datetime import datetime
-from flask import Flask, render_template
-from groq import Groq
-from notifier import send_email
 
-app = Flask(__name__)
+log = logging.getLogger(__name__)
 
+PRODUCTS_CSV = Path("products.csv")
+HISTORY_CSV  = Path("price_history.csv")
+CONFIG_FILE  = Path("config.json")
+LOG_FILE     = Path("agent.log")
 
-# ---------------- AI Analysis ---------------- #
-
-def ai_analysis(product, brand, seller, old_price, new_price):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-    prompt = f"""
-    Product: {product}
-    Brand: {brand}
-    Seller: {seller}
-    Old Price: Rs {old_price}
-    New Price: Rs {new_price}
-
-    Should the user BUY now or WAIT?
-    Give short reasoning in 2 lines.
-    """
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return response.choices[0].message.content
+PRODUCTS_FIELDS = ["product_id", "name", "url", "threshold", "last_price", "last_checked"]
+HISTORY_FIELDS  = [
+    "product_id", "name", "url", "site",
+    "price", "currency", "threshold",
+    "alert_triggered", "timestamp",
+]
 
 
-# ---------------- Database ---------------- #
+# ── Products ──────────────────────────────────────────────────────────────────
 
-def save_to_db(product, brand, seller, old_price, new_price, price_drop, percent, decision):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
+def load_products() -> pd.DataFrame:
+    if not PRODUCTS_CSV.exists():
+        return pd.DataFrame(columns=PRODUCTS_FIELDS)
+    df = pd.read_csv(PRODUCTS_CSV, dtype=str).fillna("")
+    df.columns = df.columns.str.strip()
+    if "price_threshold" in df.columns and "threshold" not in df.columns:
+        df.rename(columns={"price_threshold": "threshold"}, inplace=True)
+    for col in ("threshold", "last_price"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    if "last_checked" in df.columns:
+        df["last_checked"] = pd.to_datetime(df["last_checked"], errors="coerce")
+    return df
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS alerts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product TEXT,
-            brand TEXT,
-            seller TEXT,
-            old_price INTEGER,
-            new_price INTEGER,
-            price_drop INTEGER,
-            percent_drop REAL,
-            decision TEXT,
-            timestamp TEXT
+
+def _atomic_write(path: Path, fieldnames: list, rows: list[dict]):
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+        shutil.move(tmp, path)
+    except Exception:
+        try: os.unlink(tmp)
+        except OSError: pass
+        raise
+
+
+def save_products(df: pd.DataFrame):
+    df.to_csv(PRODUCTS_CSV, index=False)
+
+
+def add_product(product_id: str, name: str, url: str, threshold: float):
+    df = load_products()
+    new = pd.DataFrame([{
+        "product_id": product_id, "name": name, "url": url,
+        "threshold": threshold, "last_price": None, "last_checked": None,
+    }])
+    df = pd.concat([df, new], ignore_index=True)
+    save_products(df)
+
+
+def delete_product(product_id: str):
+    df = load_products()
+    df = df[df["product_id"].astype(str) != str(product_id)]
+    save_products(df)
+
+
+# ── History ───────────────────────────────────────────────────────────────────
+
+def load_history(days: int = 30) -> pd.DataFrame:
+    if not HISTORY_CSV.exists():
+        return pd.DataFrame(columns=HISTORY_FIELDS)
+    df = pd.read_csv(HISTORY_CSV, dtype=str).fillna("")
+    df.columns = df.columns.str.strip()
+    df["price"]     = pd.to_numeric(df.get("price",     pd.Series(dtype=str)), errors="coerce")
+    df["threshold"] = pd.to_numeric(df.get("threshold", pd.Series(dtype=str)), errors="coerce")
+    df["timestamp"] = pd.to_datetime(df.get("timestamp", pd.Series(dtype=str)), errors="coerce")
+    cutoff = datetime.now() - timedelta(days=days)
+    return df[df["timestamp"] >= cutoff].sort_values("timestamp")
+
+
+def price_trend(product_id: str, days: int = 30) -> pd.DataFrame:
+    df = load_history(days)
+    if df.empty or "product_id" not in df.columns:
+        return pd.DataFrame()
+    sub = df[df["product_id"].astype(str) == str(product_id)]
+    return sub[["timestamp", "price", "threshold"]].dropna(subset=["price"])
+
+
+def alerts_history(days: int = 30) -> pd.DataFrame:
+    df = load_history(days)
+    if df.empty or "alert_triggered" not in df.columns:
+        return pd.DataFrame()
+    return df[df["alert_triggered"].str.upper() == "YES"]
+
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+def summary_stats() -> dict:
+    products = load_products()
+    history  = load_history(days=7)
+    alerts   = alerts_history(days=7)
+    below    = 0
+    if not products.empty and "last_price" in products.columns and "threshold" in products.columns:
+        m = (
+            products["last_price"].notna()
+            & products["threshold"].notna()
+            & (products["threshold"] > 0)
+            & (products["last_price"] <= products["threshold"])
         )
-    """)
-
-    cursor.execute("""
-        INSERT INTO alerts
-        (product, brand, seller, old_price, new_price, price_drop, percent_drop, decision, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        product,
-        brand,
-        seller,
-        old_price,
-        new_price,
-        price_drop,
-        percent,
-        decision,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ))
-
-    conn.commit()
-    conn.close()
+        below = int(m.sum())
+    return {
+        "total_products":  len(products),
+        "checks_last_7d":  len(history),
+        "alerts_last_7d":  len(alerts),
+        "below_threshold": below,
+    }
 
 
-def run_agent():
-    print("Checking prices...")
+# ── Config ────────────────────────────────────────────────────────────────────
 
-    df = pd.read_csv("prices.csv")
-    grouped = df.groupby(["product", "brand", "seller"])
-
-    for (product, brand, seller), group in grouped:
-
-        if len(group) < 2:
-            continue
-
-        old_price = int(group.iloc[-2]["price"])
-        new_price = int(group.iloc[-1]["price"])
-
-        if new_price < old_price:
-            price_drop = old_price - new_price
-            percent = round((price_drop / old_price) * 100, 2)
-
-            decision = ai_analysis(product, brand, seller, old_price, new_price)
-
-            save_to_db(product, brand, seller, old_price, new_price, price_drop, percent, decision)
-
-            send_email(
-                "Price Drop Alert!",
-                f"{product} dropped from Rs {old_price} to Rs {new_price}"
-            )
-
-    print("Check complete.")
+def load_config() -> dict:
+    defaults = {
+        "check_interval_seconds": 3600,
+        "request_timeout": 20,
+        "retry_attempts": 3,
+        "EMAIL_SENDER":   "",
+        "EMAIL_PASSWORD": "",
+        "EMAIL_RECEIVER": "",
+        "SMTP_HOST":      "smtp.gmail.com",
+        "SMTP_PORT":      587,
+    }
+    if CONFIG_FILE.exists():
+        try:
+            return {**defaults, **json.loads(CONFIG_FILE.read_text())}
+        except (json.JSONDecodeError, OSError):
+            pass
+    return defaults
 
 
-# ---------------- Background Scheduler ---------------- #
-
-def scheduler():
-    while True:
-        run_agent()
-        time.sleep(300)  # 5 minutes
+def save_config(cfg: dict):
+    CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
+    log.info("config.json saved.")
 
 
-threading.Thread(target=scheduler, daemon=True).start()
+# ── Log ───────────────────────────────────────────────────────────────────────
+
+def read_log(lines: int = 200) -> str:
+    if not LOG_FILE.exists():
+        return "No log file yet. Run the agent first."
+    with open(LOG_FILE, encoding="utf-8", errors="replace") as f:
+        return "".join(f.readlines()[-lines:])
 
 
-# ---------------- Dashboard ---------------- #
-
-@app.route("/")
-def home():
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM alerts ORDER BY id DESC")
-    alerts = cursor.fetchall()
-
-    conn.close()
-
-    return render_template("index.html", alerts=alerts)
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+def export_history_csv() -> bytes:
+    return load_history(days=365).to_csv(index=False).encode("utf-8")
