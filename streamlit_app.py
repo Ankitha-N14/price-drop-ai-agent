@@ -3,27 +3,47 @@ import sqlite3
 import pandas as pd
 import subprocess
 
-st.title("AI Price Drop Agent")
+st.set_page_config(page_title="AI Price Drop Agent", layout="wide")
+
+st.title("Autonomous AI Price Monitoring Agent")
+
+st.write("Track any product and detect price drops automatically.")
+
+# ==============================
+# User Input Section
+# ==============================
 
 st.subheader("Track a Product")
 
-product = st.text_input("Enter product name")
+product = st.text_input("Enter Product Name")
+
+category = st.selectbox(
+    "Select Category",
+    ["Electronics", "Fashion", "Home Appliances", "Books", "Accessories", "Other"]
+)
 
 site = st.selectbox(
-    "Select website",
+    "Select Website",
     ["Amazon", "Flipkart"]
 )
 
-if st.button("Track Price"):
+if st.button("Check Price"):
 
-    command = f"python agent.py '{product}' '{site}'"
-    subprocess.run(command, shell=True)
+    if product == "":
+        st.warning("Please enter a product name.")
 
-    st.success("Agent executed! Checking price...")
+    else:
+
+        command = f'python agent.py "{product}" "{site}"'
+        subprocess.run(command, shell=True)
+
+        st.success("Agent executed successfully!")
 
 # ==============================
-# Show Alerts
+# Display Alerts
 # ==============================
+
+st.subheader("Detected Price Drops")
 
 conn = sqlite3.connect("database.db")
 
@@ -34,6 +54,13 @@ df = pd.read_sql_query(
 
 conn.close()
 
-st.subheader("Price Drop Alerts")
+if len(df) > 0:
 
-st.dataframe(df)
+    st.dataframe(
+        df,
+        use_container_width=True
+    )
+
+else:
+
+    st.info("No price drops detected yet.")
