@@ -3,6 +3,5 @@ pandas
 requests
 beautifulsoup4
 schedule
-smtplib
 python-dotenv
 lxml
