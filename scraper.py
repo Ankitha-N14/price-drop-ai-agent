@@ -1,55 +1,48 @@
-import requests
-from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 
 
 def get_price(url):
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-blink-features=AutomationControlled")
 
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+    )
 
-        if response.status_code != 200:
-            print("Failed to load page")
-            return None
+    driver.get(url)
 
-        soup = BeautifulSoup(response.content, "html.parser")
+    time.sleep(3)
 
-        price = None
+    price = None
 
-        # Try multiple Amazon price selectors
-        selectors = [
-            "#priceblock_ourprice",
-            "#priceblock_dealprice",
-            "#priceblock_saleprice",
-            ".a-price .a-offscreen",
-            ".a-price-whole",
-        ]
+    selectors = [
+        "span.a-price.aok-align-center span.a-offscreen",
+        "#priceblock_ourprice",
+        "#priceblock_dealprice",
+        ".a-price .a-offscreen"
+    ]
 
-        for selector in selectors:
-            tag = soup.select_one(selector)
-            if tag:
-                price_text = tag.get_text()
-                price_text = (
-                    price_text.replace("₹", "")
-                    .replace(",", "")
-                    .strip()
-                )
-                try:
-                    price = float(price_text)
-                    break
-                except:
-                    continue
+    for selector in selectors:
+        try:
+            element = driver.find_element(By.CSS_SELECTOR, selector)
+            price_text = element.text.replace("₹", "").replace(",", "")
+            price = float(price_text)
+            break
+        except:
+            continue
 
-        if price is None:
-            print("Price not found on page")
-            return None
+    driver.quit()
 
+    if price:
         return price
-
-    except Exception as e:
-        print("Error scraping price:", e)
+    else:
+        print("Price not found on page")
         return None
