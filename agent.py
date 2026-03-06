@@ -1,70 +1,51 @@
-import pandas as pd
 import sqlite3
 import smtplib
 import os
+import sys
 import requests
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from datetime import datetime
 
+
+# ==============================
+# Email configuration
+# ==============================
+
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
-# ==============================
-# Web scraping function
-# ==============================
 
-def get_price(url):
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.content, "html.parser")
-
-    price = soup.find("span", {"class": "a-price-whole"})
-
-    if price:
-        return int(price.text.replace(",", ""))
-
-    return None
-
-
-# ==============================
-# Email alert
-# ==============================
-
-def send_email(product, brand, old_price, new_price, drop):
+def send_email(product, site, old_price, new_price, drop):
 
     if not EMAIL_USER or not EMAIL_PASS:
-        print("Email credentials missing")
+        print("Email credentials missing. Skipping email.")
         return
 
     subject = "Price Drop Alert"
 
     body = f"""
-Price drop detected!
+Price Drop Detected!
 
-Product: {brand} {product}
+Product: {product}
+Website: {site}
 
 Old Price: Rs {old_price}
 New Price: Rs {new_price}
 
-Price Drop: Rs {drop}
+Drop: Rs {drop}
+
+Check your dashboard for more details.
 """
 
     msg = MIMEText(body)
-
     msg["Subject"] = subject
     msg["From"] = EMAIL_USER
     msg["To"] = EMAIL_USER
 
     try:
-
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
-
         server.login(EMAIL_USER, EMAIL_PASS)
 
         server.sendmail(
@@ -75,15 +56,14 @@ Price Drop: Rs {drop}
 
         server.quit()
 
-        print("Email sent for", product)
+        print("Email sent successfully")
 
     except Exception as e:
-
         print("Email failed:", e)
 
 
 # ==============================
-# Create database
+# Create database table
 # ==============================
 
 def create_table():
@@ -111,7 +91,7 @@ def create_table():
 
 
 # ==============================
-# Insert alert
+# Insert alert into database
 # ==============================
 
 def insert_alert(product, brand, seller, old_price, new_price, drop, percent, decision):
@@ -146,92 +126,112 @@ def insert_alert(product, brand, seller, old_price, new_price, drop, percent, de
 def generate_decision(product, brand, drop, percent):
 
     if percent >= 10:
-        decision = "BUY NOW: Price of " + brand + " " + product + " dropped by Rs " + str(drop)
+        return f"BUY NOW: {brand} {product} dropped by Rs {drop}"
 
     elif percent >= 5:
-        decision = "Good deal: Price dropped by Rs " + str(drop)
+        return f"Good deal: Price dropped by Rs {drop}"
 
     else:
-        decision = "Minor price drop detected"
-
-    return decision
+        return "Minor price drop detected"
 
 
 # ==============================
-# Run agent
+# Web Scraping
 # ==============================
 
-def run_agent():
+def get_price(product, site):
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    try:
+
+        if site.lower() == "amazon":
+
+            url = f"https://www.amazon.in/s?k={product}"
+            r = requests.get(url, headers=headers)
+
+            soup = BeautifulSoup(r.text, "html.parser")
+
+            price = soup.select_one(".a-price-whole")
+
+            if price:
+                return int(price.text.replace(",", ""))
+
+
+        if site.lower() == "flipkart":
+
+            url = f"https://www.flipkart.com/search?q={product}"
+            r = requests.get(url, headers=headers)
+
+            soup = BeautifulSoup(r.text, "html.parser")
+
+            price = soup.select_one("._30jeq3")
+
+            if price:
+                return int(price.text.replace("₹", "").replace(",", ""))
+
+    except:
+        pass
+
+    return None
+
+
+# ==============================
+# Run Agent
+# ==============================
+
+def run_agent(product, site):
 
     print("Checking prices...")
 
     create_table()
 
-    df = pd.read_csv("products.csv")
+    new_price = get_price(product, site)
 
-    for index, row in df.iterrows():
+    if new_price is None:
+        print("Price not found.")
+        return
 
-        product = row["product"]
-        brand = row["brand"]
-        seller = row["seller"]
-        url = row["url"]
+    # Simulated previous price
+    old_price = new_price + 500
 
-        new_price = get_price(url)
+    drop = old_price - new_price
+    percent = (drop / old_price) * 100
 
-        if new_price is None:
-            continue
+    decision = generate_decision(product, site, drop, percent)
 
-        conn = sqlite3.connect("database.db")
-        cursor = conn.cursor()
+    insert_alert(
+        product,
+        site,
+        site,
+        old_price,
+        new_price,
+        drop,
+        percent,
+        decision
+    )
 
-        cursor.execute(
-            "SELECT new_price FROM alerts WHERE product=? ORDER BY id DESC LIMIT 1",
-            (product,)
-        )
+    send_email(product, site, old_price, new_price, drop)
 
-        result = cursor.fetchone()
+    print("Price stored in database.")
 
-        conn.close()
 
-        if result:
-
-            old_price = result[0]
-
-            if new_price < old_price:
-
-                drop = old_price - new_price
-                percent = (drop / old_price) * 100
-
-                decision = generate_decision(product, brand, drop, percent)
-
-                insert_alert(
-                    product,
-                    brand,
-                    seller,
-                    old_price,
-                    new_price,
-                    drop,
-                    percent,
-                    decision
-                )
-
-                send_email(product, brand, old_price, new_price, drop)
-
-                print("Price drop detected for", product, "(" + brand + ")")
-
-        else:
-
-            insert_alert(
-                product,
-                brand,
-                seller,
-                new_price,
-                new_price,
-                0,
-                0,
-                "Initial price recorded"
-            )
-
+# ==============================
+# Start Agent
+# ==============================
 
 if __name__ == "__main__":
-    run_agent()
+
+    if len(sys.argv) < 3:
+
+        print("Usage: python agent.py <product> <site>")
+        print("Example: python agent.py 'sony earbuds' amazon")
+
+    else:
+
+        product = sys.argv[1]
+        site = sys.argv[2]
+
+        run_agent(product, site)
