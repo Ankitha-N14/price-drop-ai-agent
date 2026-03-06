@@ -22,7 +22,6 @@ def get_price(url):
     price = None
 
     try:
-        # wait until price element appears
         price_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "span.a-price span.a-offscreen"))
         )
