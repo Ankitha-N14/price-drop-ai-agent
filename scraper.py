@@ -1,48 +1,33 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-import time
-
+import requests
+import re
 
 def get_price(url):
 
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-blink-features=AutomationControlled")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
 
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
+    try:
+        r = requests.get(url, headers=headers)
+        html = r.text
 
-    driver.get(url)
+        # Amazon embeds price in JSON sometimes
+        price_match = re.search(r'"priceToPay"\s*:\s*\{"amount"\s*:\s*([\d\.]+)', html)
 
-    time.sleep(3)
+        if price_match:
+            return float(price_match.group(1))
 
-    price = None
+        # fallback selector
+        price_match = re.search(r'₹\s?([\d,]+)', html)
 
-    selectors = [
-        "span.a-price.aok-align-center span.a-offscreen",
-        "#priceblock_ourprice",
-        "#priceblock_dealprice",
-        ".a-price .a-offscreen"
-    ]
+        if price_match:
+            price = price_match.group(1).replace(",", "")
+            return float(price)
 
-    for selector in selectors:
-        try:
-            element = driver.find_element(By.CSS_SELECTOR, selector)
-            price_text = element.text.replace("₹", "").replace(",", "")
-            price = float(price_text)
-            break
-        except:
-            continue
-
-    driver.quit()
-
-    if price:
-        return price
-    else:
         print("Price not found on page")
+        return None
+
+    except Exception as e:
+        print("Error:", e)
         return None
