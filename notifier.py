@@ -1,8 +1,10 @@
 import smtplib
 from email.mime.text import MIMEText
 
-EMAIL = "nankitha14@gmail.com"
-PASSWORD = "wwzz city gtyj uzjx"
+import os
+
+EMAIL = os.getenv("EMAIL")
+PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 def send_email(user_email,product,price,url):
 
