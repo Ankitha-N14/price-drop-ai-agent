@@ -14,14 +14,12 @@ def get_price(url):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # main Amazon price selector
-        price = soup.select_one("span.a-price span.a-offscreen")
+        price_tag = soup.select_one("span.a-price span.a-offscreen")
 
-        if price:
-            price_text = price.text.replace("₹", "").replace(",", "").strip()
-            return float(price_text)
+        if price_tag:
+            price = price_tag.text.replace("₹", "").replace(",", "").strip()
+            return float(price)
 
-        # if product unavailable
         if "Currently unavailable" in response.text:
             print("Product currently unavailable")
             return None
