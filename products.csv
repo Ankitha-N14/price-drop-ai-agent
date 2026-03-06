@@ -1,6 +1,1 @@
-product,brand,seller,url
-WF-C500,Sony,Amazon,https://www.amazon.in/dp/B09FGG1K11
-Nord Buds,OnePlus,Amazon,https://www.amazon.in/dp/B09V2KBR3V
-Tune Buds,JBL,Amazon,https://www.amazon.in/dp/B0B8ZKX7G3
-Airdopes 141,boAt,Amazon,https://www.amazon.in/dp/B09NVPSCQT
-Buds VS102,Noise,Amazon,https://www.amazon.in/dp/B09Y5MK1KB
+product,url,email,current_price,last_price,ai_decision
