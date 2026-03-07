@@ -1,5 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
+import time
+import random
 
 
 def get_price(url):
@@ -10,6 +12,7 @@ def get_price(url):
     }
 
     try:
+        time.sleep(random.randint(3,8))
         response = requests.get(url, headers=headers, timeout=10)
 
         soup = BeautifulSoup(response.text, "html.parser")
