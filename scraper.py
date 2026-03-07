@@ -1,36 +1,34 @@
-import requests
-from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 import time
-import random
 
 
 def get_price(url):
 
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "en-US,en;q=0.9"
-    }
+    options = Options()
+    options.add_argument("--disable-blink-features=AutomationControlled")
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+    )
+
+    driver.get(url)
+
+    time.sleep(5)
+
+    price = None
 
     try:
-        time.sleep(random.randint(3,8))
-
-        response = requests.get(url, headers=headers, timeout=10)
-
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        price_tag = soup.select_one("span.a-price span.a-offscreen")
-
-        if price_tag:
-            price = price_tag.text.replace("₹","").replace(",","").strip()
-            return float(price)
-
-        if "Currently unavailable" in response.text:
-            print("Product currently unavailable")
-            return None
-
+        price_element = driver.find_element(By.CSS_SELECTOR, "span.a-price span.a-offscreen")
+        price_text = price_element.text
+        price = float(price_text.replace("₹","").replace(",",""))
+    except:
         print("Price not found on page")
-        return None
 
-    except Exception as e:
-        print("Error:", e)
-        return None
+    driver.quit()
+
+    return price
