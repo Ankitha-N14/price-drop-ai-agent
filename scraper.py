@@ -1,34 +1,33 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-import time
+import requests
+import re
 
 
 def get_price(url):
 
-    options = Options()
-    options.add_argument("--disable-blink-features=AutomationControlled")
-
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
-
-    driver.get(url)
-
-    time.sleep(5)
-
-    price = None
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
 
     try:
-        price_element = driver.find_element(By.CSS_SELECTOR, "span.a-price span.a-offscreen")
-        price_text = price_element.text
-        price = float(price_text.replace("₹","").replace(",",""))
-    except:
+        response = requests.get(url, headers=headers, timeout=10)
+        html = response.text
+
+        # Amazon price JSON
+        match = re.search(r'"priceToPay"\s*:\s*\{"amount"\s*:\s*([\d\.]+)', html)
+
+        if match:
+            return float(match.group(1))
+
+        # fallback price detection
+        match = re.search(r'₹\s?([\d,]+)', html)
+
+        if match:
+            return float(match.group(1).replace(",", ""))
+
         print("Price not found on page")
+        return None
 
-    driver.quit()
-
-    return price
+    except Exception as e:
+        print("Error:", e)
+        return None
