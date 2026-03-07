@@ -1,29 +1,30 @@
 import requests
-import re
+from bs4 import BeautifulSoup
+import time
+import random
 
 
 def get_price(url):
 
     headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "en-US,en;q=0.9"
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36",
+        "Accept-Language": "en-IN,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive"
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        html = response.text
+        time.sleep(random.randint(2,5))
 
-        # Amazon price JSON
-        match = re.search(r'"priceToPay"\s*:\s*\{"amount"\s*:\s*([\d\.]+)', html)
+        response = requests.get(url, headers=headers, timeout=15)
 
-        if match:
-            return float(match.group(1))
+        soup = BeautifulSoup(response.text, "html.parser")
 
-        # fallback price detection
-        match = re.search(r'₹\s?([\d,]+)', html)
+        price_tag = soup.select_one("span.a-price span.a-offscreen")
 
-        if match:
-            return float(match.group(1).replace(",", ""))
+        if price_tag:
+            price = price_tag.text.replace("₹","").replace(",","").strip()
+            return float(price)
 
         print("Price not found on page")
         return None
